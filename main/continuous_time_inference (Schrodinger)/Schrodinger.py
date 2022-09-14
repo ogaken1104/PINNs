@@ -25,7 +25,7 @@ tf.set_random_seed(1234)
 class PhysicsInformedNN:
     # Initialize the class
     def __init__(self, x0, u0, v0, tb, X_f, layers, lb, ub):
-        
+        # 引数として初期条件、境界条件を受けて、層を受けている
         X0 = np.concatenate((x0, 0*x0), 1) # (x0, 0)
         X_lb = np.concatenate((0*tb + lb[0], tb), 1) # (lb[0], tb)
         X_ub = np.concatenate((0*tb + ub[0], tb), 1) # (ub[0], tb)
@@ -75,13 +75,13 @@ class PhysicsInformedNN:
         self.f_u_pred, self.f_v_pred = self.net_f_uv(self.x_f_tf, self.t_f_tf)
         
         # Loss
-        self.loss = tf.reduce_mean(tf.square(self.u0_tf - self.u0_pred)) + \
-                    tf.reduce_mean(tf.square(self.v0_tf - self.v0_pred)) + \
-                    tf.reduce_mean(tf.square(self.u_lb_pred - self.u_ub_pred)) + \
+        self.loss = tf.reduce_mean(tf.square(self.u0_tf - self.u0_pred)) + \ # 初期条件
+                    tf.reduce_mean(tf.square(self.v0_tf - self.v0_pred)) + \ # 初期条件
+                    tf.reduce_mean(tf.square(self.u_lb_pred - self.u_ub_pred)) + \ # 境界条件（h）
                     tf.reduce_mean(tf.square(self.v_lb_pred - self.v_ub_pred)) + \
-                    tf.reduce_mean(tf.square(self.u_x_lb_pred - self.u_x_ub_pred)) + \
+                    tf.reduce_mean(tf.square(self.u_x_lb_pred - self.u_x_ub_pred)) + \ # 境界条件（hをxで微分したもの）
                     tf.reduce_mean(tf.square(self.v_x_lb_pred - self.v_x_ub_pred)) + \
-                    tf.reduce_mean(tf.square(self.f_u_pred)) + \
+                    tf.reduce_mean(tf.square(self.f_u_pred)) + \ #物理法則
                     tf.reduce_mean(tf.square(self.f_v_pred))
         
         # Optimizers
@@ -93,7 +93,7 @@ class PhysicsInformedNN:
                                                                            'maxls': 50,
                                                                            'ftol' : 1.0 * np.finfo(float).eps})
     
-        self.optimizer_Adam = tf.train.AdamOptimizer()
+        self.optimizer_Adam = tf.train.AdamOptimizer() #自分で作った関数をもとにoptimizerを定義
         self.train_op_Adam = self.optimizer_Adam.minimize(self.loss)
                 
         # tf session
@@ -120,6 +120,7 @@ class PhysicsInformedNN:
         xavier_stddev = np.sqrt(2/(in_dim + out_dim))
         return tf.Variable(tf.truncated_normal([in_dim, out_dim], stddev=xavier_stddev), dtype=tf.float32)
     
+    # 入力からニューラルネットの出力を計算
     def neural_net(self, X, weights, biases):
         num_layers = len(weights) + 1
         
@@ -133,19 +134,23 @@ class PhysicsInformedNN:
         Y = tf.add(tf.matmul(H, W), b)
         return Y
     
+    # ニューラルネットの出力からxによる微分を計算
     def net_uv(self, x, t):
         X = tf.concat([x,t],1)
         
+        # neural_netを用いて予測値を得る（u,v）
         uv = self.neural_net(X, self.weights, self.biases)
         u = uv[:,0:1]
         v = uv[:,1:2]
         
+        # 勾配を得る
         u_x = tf.gradients(u, x)[0]
         v_x = tf.gradients(v, x)[0]
 
         return u, v, u_x, v_x
 
     def net_f_uv(self, x, t):
+        # さらにその結果からt,xxによる微分を計算
         u, v, u_x, v_x = self.net_uv(x,t)
         
         u_t = tf.gradients(u, t)[0]
@@ -154,6 +159,7 @@ class PhysicsInformedNN:
         v_t = tf.gradients(v, t)[0]
         v_xx = tf.gradients(v_x, x)[0]
         
+        # 物理法則を計算
         f_u = u_t + 0.5*v_xx + (u**2 + v**2)*v
         f_v = v_t - 0.5*u_xx - (u**2 + v**2)*u   
         
